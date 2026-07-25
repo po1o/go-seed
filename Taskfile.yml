@@ -231,10 +231,18 @@ tasks:
         sh: gh repo view --json nameWithOwner -q .nameWithOwner
     cmds:
       - |
-        set -eu
+        set -euo pipefail
         repo="{{.REPO}}"; name="protected"
-        id=$(gh api "repos/${repo}/rulesets" --jq ".[] | select(.name==\"${name}\") | .id" 2>/dev/null | head -n1 || true)
-        if [ -n "${id:-}" ]; then method=PUT; url="repos/${repo}/rulesets/${id}"; echo "Updating ruleset ${name} (#${id}) on ${repo}"; else method=POST; url="repos/${repo}/rulesets"; echo "Creating ruleset ${name} on ${repo}"; fi
+        # A failure listing rulesets almost always means the repo can't use them:
+        # a private repo on a free plan must be public or on GitHub Pro/Team.
+        if ! ids=$(gh api "repos/${repo}/rulesets" --jq ".[] | select(.name==\"${name}\") | .id" 2>&1); then
+          echo "ERROR: cannot manage rulesets on ${repo} — needs a PUBLIC repo or GitHub Pro/Team." >&2
+          echo "  make public:  gh repo edit ${repo} --visibility public" >&2
+          printf '%s\n' "$ids" >&2
+          exit 1
+        fi
+        id=$(printf '%s' "$ids" | head -n1)
+        if [ -n "$id" ]; then method=PUT; url="repos/${repo}/rulesets/${id}"; echo "Updating ruleset ${name} (#${id}) on ${repo}"; else method=POST; url="repos/${repo}/rulesets"; echo "Creating ruleset ${name} on ${repo}"; fi
         gh api --method "$method" "$url" --input - <<'JSON'
         {
           "name": "protected",
