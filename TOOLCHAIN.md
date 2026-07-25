@@ -231,24 +231,26 @@ nothing hardcoded. It creates (or updates in place — re-runnable, no duplicate
 
 The policy:
 
+The policy:
+
 - **A PR is required** — no direct pushes to the default branch.
-- **0 required approvals.** A solo repo has no second reviewer, so forcing an approval would just mean
-  admin-overriding every merge. Instead you merge your own green PRs, and Dependabot can auto-merge. You still
-  review by eye; the CI checks are the real gate.
+- **1 approving review**, with two `bypass_actors` that skip it:
+  - **Repository admins** (you) — also your force-merge escape hatch.
+  - **The auto-merge GitHub App** (`TIDY_APP_ID`) — so **only Dependabot's PRs** merge without a human
+    review. Everyone else needs one. (Why the App and not `github-actions`: see the auto-merge section below.)
 - **The four checks must pass**, plus **no force-push** and **no branch deletion**.
 - **Squash or rebase merges only** — no merge commits, so history stays linear (`task setup:merge-settings` also
   turns off the repo's "Allow merge commits" so the button never appears).
-- **Repository admins bypass everything** (`bypass_actors`) — your force-merge escape hatch, cleaner than legacy
-  protection's all-or-nothing `enforce_admins`.
 
 Run it once (not-yet-seen check contexts are accepted as "Expected"). Needs the GitHub CLI authenticated with admin
-on the repo.
+on the repo, and the auto-merge App's numeric ID stored as the repo **Actions variable** `TIDY_APP_ID`
+(`gh variable set TIDY_APP_ID --body …`; a `task setup TIDY_APP_ID=…` arg overrides). It's a variable, not a
+secret — it isn't sensitive, and a local task can't read Dependabot/Actions *secrets* anyway.
 
 **Why a ruleset, not legacy branch protection?** Rulesets are GitHub's current direction: org-level definitions
 across many repos, granular per-role/team/app **bypass actors** (vs. legacy's admin-only toggle), an `evaluate`
-dry-run mode, and readability without admin. If you later want a hard review requirement *and* Dependabot
-auto-merge, a ruleset is what lets you keep `required_approving_review_count` at 1 while granting a bypass — legacy
-protection can't express that.
+dry-run mode, and readability without admin. This "1 review, except one App" policy is exactly what legacy
+protection *can't* express — only rulesets have per-app bypass actors.
 
 ### Dependabot
 
@@ -295,21 +297,25 @@ secret-less.
 
 ### Auto-merge for Dependabot PRs
 
-With the `protected` ruleset requiring **0 reviews**, a Dependabot PR needs nothing but green checks to merge —
-there is no approval to wait on. [`dependabot_automerge.yml`](./.github/workflows/dependabot_automerge.yml) turns on
-GitHub's **native auto-merge** for each Dependabot PR (`gh pr merge --auto --squash`), so it merges itself the
-moment the checks pass. It uses the plain `GITHUB_TOKEN` (elevated to `pull-requests: write`) — **no App needed**,
-because enabling auto-merge isn't a push. It runs only for `dependabot[bot]`'s own PRs, and runs no dependency code.
+The ruleset requires **1 review for everyone** — except the auto-merge App, which is a bypass actor.
+[`dependabot_automerge.yml`](./.github/workflows/dependabot_automerge.yml) arms GitHub's **native auto-merge** for
+each Dependabot PR (`gh pr merge --auto --squash`), so it merges itself the moment the required checks pass.
 
-Two prerequisites, both handled by `task setup`:
+**Why the App token, not `GITHUB_TOKEN`.** A ruleset bypass applies to *whoever performs the merge*. If we bypassed
+`github-actions` (the `GITHUB_TOKEN` identity), then *any* workflow's `GITHUB_TOKEN` could merge without a review —
+a write-access collaborator could add a self-merging workflow. So instead the job mints a token from the auto-merge
+**GitHub App** (the same one as `dependabot_tidy.yml`) and bypasses *only that App*. The App's key lives in the
+**Dependabot secret store**, which GitHub exposes **only to Dependabot-triggered runs** — a human PR can't read it,
+can't mint the token, and can't use the bypass. So the review is skipped for Dependabot and *nothing else*. (The
+App needs **Pull requests: write** on top of the **Contents: write** the tidy job already uses.)
 
-1. **"Allow auto-merge" must be on** for the repo — `task setup:merge-settings` sets it
-   (`gh api PATCH … allow_auto_merge=true`). It lets a PR *queue* a merge that fires once the required checks
-   pass; without it, `gh pr merge --auto` can't arm that queue on a PR whose checks are still pending. (With no
-   required checks a PR is mergeable immediately, so it merges on the spot regardless — which is how a Dependabot
-   PR slipped through *before* the ruleset existed.) That same task also turns *off* "Allow merge commits" — an
-   unrelated setting, see the ruleset section above.
-2. **No required review** — the `protected` ruleset already sets `required_approving_review_count: 0`.
+Prerequisites, all handled by `task setup`:
+
+1. **"Allow auto-merge" must be on** — `task setup:merge-settings` sets it (`gh api PATCH … allow_auto_merge=true`).
+   It lets a PR *queue* a merge that fires once the required checks pass; without it, `gh pr merge --auto` can't arm
+   that queue on a PR whose checks are still pending. That same task also turns *off* "Allow merge commits".
+2. **The App is a review bypass actor** — `task setup:branch-protection` adds it (needs `TIDY_APP_ID`), so
+   Dependabot's PRs don't wait on a human review while everyone else's do.
 
 The pieces compose: Dependabot opens a PR → `dependabot_tidy.yml` fixes `go.mod` if needed (its App-token push
 re-triggers checks) → `dependabot_automerge.yml` has auto-merge armed → checks go green → GitHub merges. Hands-off.

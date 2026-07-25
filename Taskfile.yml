@@ -13,6 +13,13 @@ vars:
   MDLINT_VERSION: 0.23.1
   # commitlint major version used by the `commit-lint` task (Node tooling).
   COMMITLINT_VERSION: 19
+  # Numeric App ID of the GitHub App that arms Dependabot auto-merge (same App as
+  # dependabot_tidy.yml), used as a ruleset bypass actor so only Dependabot's PRs
+  # skip the required review. `setup:branch-protection` reads it from the repo's
+  # Actions *variable* TIDY_APP_ID (`gh variable set TIDY_APP_ID --body …`) — it
+  # is not a secret, and a local task can't read Dependabot secrets anyway. This
+  # var is just an optional override: `task setup TIDY_APP_ID=…`.
+  TIDY_APP_ID: '{{.TIDY_APP_ID | default ""}}'
 
 tasks:
   default:
@@ -220,12 +227,13 @@ tasks:
     # repository *ruleset*, GitHub's modern replacement for branch protection.
     # Requires the GitHub CLI authenticated with admin on the repo.
     #
-    # Policy: a PR is required (no direct pushes), 0 required approvals (a solo
-    # repo has no second reviewer, so you merge your own green PRs and Dependabot
-    # can auto-merge), the four CI checks must pass, plus no force-push and no
-    # branch deletion. Repository admins bypass everything — your force-merge
-    # escape hatch. Not-yet-seen check contexts are accepted as "Expected".
-    desc: 'Create/update the "protected" ruleset on the default branch (PR + CI checks, 0 reviews)'
+    # Policy: a PR is required (no direct pushes), 1 approving review, the four CI
+    # checks must pass, plus no force-push and no branch deletion. Two bypass
+    # actors skip the review: repository admins (you — also your force-merge
+    # escape hatch) and the auto-merge GitHub App (TIDY_APP_ID), so only
+    # Dependabot's PRs auto-merge without a human review. Everyone else needs one.
+    # Not-yet-seen check contexts are accepted as "Expected".
+    desc: 'Create/update the "protected" ruleset (PR + CI checks + 1 review, App/admin bypass)'
     vars:
       REPO:
         sh: gh repo view --json nameWithOwner -q .nameWithOwner
@@ -233,6 +241,19 @@ tasks:
       - |
         set -euo pipefail
         repo="{{.REPO}}"; name="protected"
+        # Numeric App ID of the auto-merge App — a ruleset bypass actor for the
+        # review rule (everyone else needs 1 approving review). Read from the
+        # repo's Actions *variable* store; a TIDY_APP_ID= task arg overrides it.
+        app_id="{{.TIDY_APP_ID}}"
+        if [ -z "$app_id" ]; then
+          app_id=$(gh api "repos/${repo}/actions/variables/TIDY_APP_ID" --jq '.value' 2>/dev/null || true)
+        fi
+        if ! printf '%s' "$app_id" | grep -qE '^[0-9]+$'; then
+          echo "ERROR: TIDY_APP_ID (numeric App ID of the auto-merge App) not found." >&2
+          echo "  Store it as a repo variable:  gh variable set TIDY_APP_ID --repo ${repo} --body 123456" >&2
+          echo "  (or pass it once:  task setup TIDY_APP_ID=123456)" >&2
+          exit 1
+        fi
         # A failure listing rulesets almost always means the repo can't use them:
         # a private repo on a free plan must be public or on GitHub Pro/Team.
         if ! ids=$(gh api "repos/${repo}/rulesets" --jq ".[] | select(.name==\"${name}\") | .id" 2>&1); then
@@ -249,14 +270,15 @@ tasks:
           "target": "branch",
           "enforcement": "active",
           "bypass_actors": [
-            {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}
+            {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"},
+            {"actor_id": {{.TIDY_APP_ID}}, "actor_type": "Integration", "bypass_mode": "always"}
           ],
           "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
           "rules": [
             {"type": "deletion"},
             {"type": "non_fast_forward"},
             {"type": "pull_request", "parameters": {
-              "required_approving_review_count": 0,
+              "required_approving_review_count": 1,
               "dismiss_stale_reviews_on_push": false,
               "require_code_owner_review": false,
               "require_last_push_approval": false,

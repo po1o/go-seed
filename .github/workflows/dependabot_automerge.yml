@@ -1,25 +1,31 @@
 name: Dependabot Auto-Merge
 
-# Turns on GitHub's native auto-merge for Dependabot PRs, so a patch/minor bump
-# merges itself once the required checks are green (majors are left for manual
-# review). The "protected" ruleset requires 0 reviews (see
-# `task setup:branch-protection`), so nothing waits on a human approval.
+# Arms GitHub's native auto-merge for Dependabot PRs, so a patch/minor bump
+# merges itself once the required checks are green (majors are left for a manual
+# look). The merge is armed with a short-lived token minted from the auto-merge
+# GitHub App — NOT the default GITHUB_TOKEN. That is deliberate: the ruleset
+# requires 1 review for everyone, and only the App is a bypass actor, so only
+# Dependabot's PRs skip the review. github-actions is not a bypass actor, so no
+# ordinary GITHUB_TOKEN workflow can merge without a review.
 #
-# Requires the repo setting "Allow auto-merge" to be ON — `task setup` enables it
-# (gh api PATCH … allow_auto_merge=true). Without it, `gh pr merge --auto` errors.
+# The App key lives in the *Dependabot* secret store, which GitHub exposes only
+# to Dependabot-triggered runs — so a human PR (even a write collaborator's)
+# cannot mint this token and cannot use the bypass. Reuses the same App and
+# secrets as dependabot_tidy.yml; the App needs Pull requests: write (plus the
+# Contents: write it already has).
 #
-# Security: this job runs no dependency code — only `gh pr merge` against the API.
-# The elevated token never sits beside untrusted code (that is why tidy/build live
-# in their own jobs). It also runs ONLY for Dependabot's own PRs, so fork PRs from
-# other authors are skipped and never reach the write-scoped token.
+# Requires "Allow auto-merge" ON (`task setup` enables it) and the App's numeric
+# App ID set as a ruleset bypass actor (`task setup:branch-protection`).
+#
+# Security: this job runs no dependency code — only `gh pr merge` against the
+# API. It also runs ONLY for Dependabot's own PRs.
 
 on:
   pull_request:
     types: [opened, reopened, synchronize]
 
-permissions:
-  contents: write
-  pull-requests: write
+# The GITHUB_TOKEN needs nothing here — all API calls use the App token.
+permissions: {}
 
 jobs:
   automerge:
@@ -27,11 +33,17 @@ jobs:
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
+      - name: Mint a short-lived token from the auto-merge GitHub App
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.TIDY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.TIDY_APP_PRIVATE_KEY }}
       - name: Fetch Dependabot metadata
         id: meta
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ steps.app-token.outputs.token }}
       # Patch and minor bumps auto-merge; majors are left open for a manual look.
       # For a grouped PR, fetch-metadata reports the highest bump in the group, so
       # a group containing any major is excluded too.
@@ -40,4 +52,4 @@ jobs:
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
