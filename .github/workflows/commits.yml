@@ -40,6 +40,7 @@ jobs:
       - name: Validate PR title
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
+          npm_config_loglevel: error   # hush npm's transitive-dep deprecation warnings
         run: |
           printf '%s\n' "$PR_TITLE" | npx -y \
             --package @commitlint/cli@19 \

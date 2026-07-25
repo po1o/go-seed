@@ -191,6 +191,8 @@ tasks:
     #   task commit-lint SOURCE='--edit .git/COMMIT_EDITMSG'
     desc: Lint commit messages against .commitlintrc.cjs (Conventional Commits)
     silent: true
+    env:
+      npm_config_loglevel: error   # hush npm's transitive-dep deprecation warnings
     vars:
       SOURCE: '{{.SOURCE | default "--last"}}'
     cmds:
