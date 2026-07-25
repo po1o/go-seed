@@ -1,4 +1,4 @@
-name: Go Mod
+name: Dependencies
 
 on: [pull_request]
 
@@ -8,6 +8,7 @@ concurrency:
 
 jobs:
   go-mod:
+    name: tidy-check
     runs-on: ubuntu-latest
     defaults:
       run:

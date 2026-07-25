@@ -1,4 +1,4 @@
-name: Validate Commits
+name: Commit-PR
 
 # `edited` so renaming a PR re-runs the title check; the rest are the defaults.
 on:
@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   commitlint:
-    name: commit check
+    name: convention
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

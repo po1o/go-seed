@@ -291,10 +291,10 @@ tasks:
               "strict_required_status_checks_policy": false,
               "do_not_enforce_on_create": false,
               "required_status_checks": [
-                {"context": "code-checks"},
-                {"context": "commit check"},
-                {"context": "go-mod"},
-                {"context": "markdown check"}
+                {"context": "post-check"},
+                {"context": "convention"},
+                {"context": "tidy-check"},
+                {"context": "check"}
               ]
             }}
           ]

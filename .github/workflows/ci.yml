@@ -5,7 +5,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-name: CI
+name: Code
 jobs:
   # Detect whether anything beyond docs changed. The heavy jobs below are gated
   # on this with a job-level `if` rather than a workflow-level `paths-ignore`:
@@ -13,6 +13,7 @@ jobs:
   # workflow skipped by paths-ignore would instead never post its context and
   # leave a required check Pending forever, permanently blocking the PR.
   changes:
+    name: detect-changes
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.filter.outputs.code }}
@@ -109,6 +110,7 @@ jobs:
   # skipped on a docs-only PR) so the required context always posts. A skipped
   # dependency counts as ok; only a real failure blocks.
   code-checks:
+    name: post-check
     needs: [changes, test, build]
     if: always()
     runs-on: ubuntu-latest

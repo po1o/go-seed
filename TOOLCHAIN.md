@@ -32,17 +32,17 @@ Want a bare `task`? `brew install go-task/tap/go-task` and drop the `go tool` pr
 
 Each workflow installs pinned Go via `bootstrap-go`, then runs a task — no logic duplicated.
 
-| Workflow | Runs | Required check |
+| Workflow (display) | Runs | Required check (context) |
 | --- | --- | --- |
-| `ci.yml` | `changes` → `test` (Linux/macOS) ∥ `build` → aggregator | **`code-checks`** |
-| `gomod.yml` | `task tidy:check` | `go-mod` |
-| `commits.yml` | commitlint — commit messages + PR title | `commit check` |
-| `markdown.yml` | markdownlint-cli2 | `markdown check` |
+| `ci.yml` (Code) | `detect-changes` → `test` (Linux/macOS) ∥ `build` → aggregator | **`post-check`** |
+| `gomod.yml` (Dependencies) | `task tidy:check` | `tidy-check` |
+| `commits.yml` (Commit-PR) | commitlint — commit messages + PR title | `convention` |
+| `markdown.yml` (Markdown) | markdownlint-cli2 | `check` |
 | `dependabot_tidy.yml` / `dependabot_automerge.yml` | Dependabot fixups | — |
 
-**One gate, no deadlock.** In `ci.yml`, `test`/`build` are gated by a `changes` detector (job-level `if`), not a
-workflow-level `paths-ignore`. So a docs-only PR *skips* them and the single required **`code-checks`** aggregator
-still reports success — whereas a `paths-ignore`'d required workflow would hang "Pending" forever.
+**One gate, no deadlock.** In `ci.yml`, `test`/`build` are gated by the `detect-changes` detector (job-level `if`),
+not a workflow-level `paths-ignore`. So a docs-only PR *skips* them and the single required **`post-check`**
+aggregator still reports success — whereas a `paths-ignore`'d required workflow would hang "Pending" forever.
 
 ## Setup (once per new repo, needs `gh` admin)
 
