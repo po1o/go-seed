@@ -12,6 +12,7 @@ import (
 )
 
 func main() {
+	// Greet, then print the build version.
 	if _, err := fmt.Fprintln(os.Stdout, "Hello, World!"); err != nil {
 		os.Exit(1)
 	}
