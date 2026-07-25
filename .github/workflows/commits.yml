@@ -1,6 +1,9 @@
 name: Validate Commits
 
-on: [pull_request]
+# `edited` so renaming a PR re-runs the title check; the rest are the defaults.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
