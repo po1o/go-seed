@@ -304,8 +304,11 @@ because enabling auto-merge isn't a push. It runs only for `dependabot[bot]`'s o
 Two prerequisites, both handled by `task setup`:
 
 1. **"Allow auto-merge" must be on** for the repo — `task setup:merge-settings` sets it
-   (`gh api PATCH … allow_auto_merge=true`). Without it `gh pr merge --auto` errors. (That same task also
-   turns *off* "Allow merge commits" — an unrelated setting, see the ruleset section above.)
+   (`gh api PATCH … allow_auto_merge=true`). It lets a PR *queue* a merge that fires once the required checks
+   pass; without it, `gh pr merge --auto` can't arm that queue on a PR whose checks are still pending. (With no
+   required checks a PR is mergeable immediately, so it merges on the spot regardless — which is how a Dependabot
+   PR slipped through *before* the ruleset existed.) That same task also turns *off* "Allow merge commits" — an
+   unrelated setting, see the ruleset section above.
 2. **No required review** — the `protected` ruleset already sets `required_approving_review_count: 0`.
 
 The pieces compose: Dependabot opens a PR → `dependabot_tidy.yml` fixes `go.mod` if needed (its App-token push
