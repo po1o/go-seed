@@ -121,6 +121,7 @@ Each sub-task also runs alone (`task lint`, `task test:unit`).
 | `setup`          | one-time project bootstrap                      | Runs the two `setup:*` tasks            |
 | `setup:branch-protection` | `gh api …/rulesets` (create/update)    | "protected" ruleset; repo auto-detected |
 | `setup:merge-settings` | `gh api PATCH … allow_auto_merge/allow_merge_commit` | Auto-merge on, merge commits off  |
+| `setup:app-credentials` | `op read … \| gh secret/variable set`  | App creds 1Password → repo (op→gh pipe)  |
 
 ### Node-backed tasks: `markdown-lint` and `commit-lint`
 

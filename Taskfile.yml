@@ -317,3 +317,40 @@ tasks:
           -F allow_auto_merge=true \
           -F allow_merge_commit=false \
           --silent
+
+  setup:app-credentials:
+    # Pushes the tidy/auto-merge GitHub App credentials from 1Password into the
+    # repo. ULTRA-SAFE by construction: every value flows `op read` → `gh` over a
+    # PIPE — it never lands on disk, never becomes a command-line argument (so not
+    # in `ps` or shell history), never enters the environment (so not inherited by
+    # child processes), and is never printed. `gh` also encrypts each secret
+    # client-side (libsodium sealed box) before upload. Needs `op` (1Password CLI)
+    # signed in and `gh` authenticated with admin on the repo.
+    #
+    # Point these env vars at YOUR 1Password item. They are op:// *references*, not
+    # secrets — but they reveal your vault layout, so DON'T commit them to a public
+    # repo; export them from your shell / a local (gitignored) env file:
+    #   OP_CLIENT_ID_REF    op:// path to the App Client ID
+    #   OP_PRIVATE_KEY_REF  op:// path to the App private key (.pem)
+    #   OP_APP_ID_REF       op:// path to the numeric App ID
+    desc: 'Push App creds from 1Password → Dependabot secrets + TIDY_APP_ID variable'
+    vars:
+      REPO:
+        sh: gh repo view --json nameWithOwner -q .nameWithOwner
+    cmds:
+      - |
+        set -euo pipefail
+        command -v op >/dev/null || { echo "1Password CLI (op) not found on PATH" >&2; exit 1; }
+        : "${OP_CLIENT_ID_REF:?export OP_CLIENT_ID_REF=op://Vault/Item/field}"
+        : "${OP_PRIVATE_KEY_REF:?export OP_PRIVATE_KEY_REF=op://Vault/Item/field}"
+        : "${OP_APP_ID_REF:?export OP_APP_ID_REF=op://Vault/Item/field}"
+        repo="{{.REPO}}"
+        # Single-line values: strip any trailing newline in-pipe (never in args).
+        echo "→ Dependabot secret TIDY_APP_CLIENT_ID"
+        op read "$OP_CLIENT_ID_REF"  | tr -d '\r\n' | gh secret set TIDY_APP_CLIENT_ID --app dependabot --repo "$repo"
+        # Private key is multi-line — pipe it through untouched.
+        echo "→ Dependabot secret TIDY_APP_PRIVATE_KEY"
+        op read "$OP_PRIVATE_KEY_REF" | gh secret set TIDY_APP_PRIVATE_KEY --app dependabot --repo "$repo"
+        echo "→ Actions variable TIDY_APP_ID"
+        op read "$OP_APP_ID_REF"      | tr -d '\r\n' | gh variable set TIDY_APP_ID --repo "$repo"
+        echo "✓ pushed — values stayed in-pipe (no disk, args, env, or history)"
