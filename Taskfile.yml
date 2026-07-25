@@ -301,21 +301,22 @@ tasks:
 
   setup:merge-settings:
     # Configures the repo-level PR/merge settings: enables "Allow auto-merge" (so
-    # dependabot_automerge.yml can arm native auto-merge) and disables "Allow
-    # merge commits" (squash/rebase only — keeps history linear; the ruleset
-    # enforces the same on the default branch). Squash and rebase stay enabled by
-    # default. Idempotent. Generic: repo slug from the origin remote. Needs the
-    # GitHub CLI authenticated with admin.
-    desc: Repo merge settings — enable auto-merge, disallow merge commits
+    # dependabot_automerge.yml can arm native auto-merge), disables "Allow merge
+    # commits" (squash/rebase only — keeps history linear; the ruleset enforces
+    # the same on the default branch), and auto-deletes head branches after merge.
+    # Squash and rebase stay enabled by default. Idempotent. Generic: repo slug
+    # from the origin remote. Needs the GitHub CLI authenticated with admin.
+    desc: Repo merge settings — auto-merge on, merge commits off, delete branch on merge
     vars:
       REPO:
         sh: gh repo view --json nameWithOwner -q .nameWithOwner
     cmds:
       - |
-        echo "Setting merge config on {{.REPO}}: auto-merge on, merge commits off"
+        echo "Merge config on {{.REPO}}: auto-merge on, merge commits off, delete branch on merge"
         gh api --method PATCH "repos/{{.REPO}}" \
           -F allow_auto_merge=true \
           -F allow_merge_commit=false \
+          -F delete_branch_on_merge=true \
           --silent
 
   setup:app-credentials:
