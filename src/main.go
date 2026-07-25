@@ -12,6 +12,9 @@ import (
 )
 
 func main() {
+	if _, err := fmt.Fprintln(os.Stdout, "Hello, World!"); err != nil {
+		os.Exit(1)
+	}
 	if _, err := fmt.Fprintf(os.Stdout, "go-seed %s\n", build.Version); err != nil {
 		os.Exit(1)
 	}
