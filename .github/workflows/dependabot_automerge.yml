@@ -1,8 +1,9 @@
 name: Dependabot Auto-Merge
 
-# Turns on GitHub's native auto-merge for Dependabot PRs, so a bump merges itself
-# once the required checks are green. The "protected" ruleset requires 0 reviews
-# (see `task setup:branch-protection`), so nothing waits on a human approval.
+# Turns on GitHub's native auto-merge for Dependabot PRs, so a patch/minor bump
+# merges itself once the required checks are green (majors are left for manual
+# review). The "protected" ruleset requires 0 reviews (see
+# `task setup:branch-protection`), so nothing waits on a human approval.
 #
 # Requires the repo setting "Allow auto-merge" to be ON — `task setup` enables it
 # (gh api PATCH … allow_auto_merge=true). Without it, `gh pr merge --auto` errors.
@@ -26,10 +27,16 @@ jobs:
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      # Auto-merges every Dependabot PR. To limit to non-major bumps instead, add
-      # a `dependabot/fetch-metadata` step and guard on
-      # steps.meta.outputs.update-type != 'version-update:semver-major'.
-      - name: Enable auto-merge for Dependabot PRs
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      # Patch and minor bumps auto-merge; majors are left open for a manual look.
+      # For a grouped PR, fetch-metadata reports the highest bump in the group, so
+      # a group containing any major is excluded too.
+      - name: Enable auto-merge for non-major Dependabot PRs
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
