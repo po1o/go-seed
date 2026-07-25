@@ -96,7 +96,7 @@ jobs:
       - name: Build 🔨
         run: go tool task build
       - name: Archive build artifacts
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: go-seed
           retention-days: 1
