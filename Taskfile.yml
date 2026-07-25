@@ -1,0 +1,283 @@
+# Taskfile for go-seed — https://taskfile.dev
+#
+# Every tool is invoked through `go tool` so versions are pinned in src/go.mod
+# and CI runs byte-identical binaries. Run `task` (or `task --list`) to see all
+# available tasks.
+version: "3"
+
+vars:
+  # Output path for the built binary, relative to src/. Override with:
+  #   task build OUTPUT=/some/where/go-seed
+  OUTPUT: '{{.OUTPUT | default "../bin/go-seed"}}'
+  # markdownlint-cli2 version — keep in sync with .github/workflows/markdown.yml.
+  MDLINT_VERSION: 0.23.1
+  # commitlint major version used by the `commit-lint` task (Node tooling).
+  COMMITLINT_VERSION: 19
+
+tasks:
+  default:
+    desc: List all available tasks
+    silent: true
+    dir: src
+    cmds:
+      - go tool task --list
+
+  build:
+    desc: Build for the host OS/arch → ./bin/go-seed (OUTPUT overrides the path)
+    dir: src
+    cmds:
+      - go build -o {{.OUTPUT}} .
+
+  # Internal helper: cross-compile for an explicit GOOS/GOARCH. The artifact is
+  # named bin/go-seed-<os>-<arch> so every target lands in ./bin without
+  # clobbering the others. Pure-Go build (no cgo), so cross-compiling is clean.
+  build:target:
+    internal: true
+    dir: src
+    label: 'build:{{.GOOS}}-{{.GOARCH}}'
+    requires:
+      vars: [GOOS, GOARCH]
+    env:
+      GOOS: '{{.GOOS}}'
+      GOARCH: '{{.GOARCH}}'
+      CGO_ENABLED: '0'
+    cmds:
+      - go build -o ../bin/go-seed-{{.GOOS}}-{{.GOARCH}} .
+
+  build:linux-amd64:
+    desc: Cross-compile for Linux x86_64 → bin/go-seed-linux-amd64
+    cmds:
+      - task: build:target
+        vars: {GOOS: linux, GOARCH: amd64}
+
+  build:linux-arm64:
+    desc: Cross-compile for Linux arm64 → bin/go-seed-linux-arm64
+    cmds:
+      - task: build:target
+        vars: {GOOS: linux, GOARCH: arm64}
+
+  build:darwin-arm64:
+    desc: Cross-compile for macOS (Apple Silicon) → bin/go-seed-darwin-arm64
+    cmds:
+      - task: build:target
+        vars: {GOOS: darwin, GOARCH: arm64}
+
+  build:freebsd-amd64:
+    desc: Cross-compile for FreeBSD x86_64 → bin/go-seed-freebsd-amd64
+    cmds:
+      - task: build:target
+        vars: {GOOS: freebsd, GOARCH: amd64}
+
+  build:freebsd-arm64:
+    desc: Cross-compile for FreeBSD arm64 → bin/go-seed-freebsd-arm64
+    cmds:
+      - task: build:target
+        vars: {GOOS: freebsd, GOARCH: arm64}
+
+  build:all:
+    desc: Cross-compile every release target into ./bin
+    cmds:
+      - task: build:linux-amd64
+      - task: build:linux-arm64
+      - task: build:darwin-arm64
+      - task: build:freebsd-amd64
+      - task: build:freebsd-arm64
+
+  run:
+    desc: Build and run go-seed
+    dir: src
+    cmds:
+      - go run .
+
+  clean:
+    # `git clean -dfX` removes only git-IGNORED files (bin/, dist/, coverage,
+    # editor cruft, stray node_modules) — restoring a fresh-clone tree while
+    # leaving your code changes (modified tracked files AND new untracked
+    # sources) untouched. Also clears Go's local test cache so tests re-run
+    # from scratch. Preview first with `task clean:dry`.
+    desc: Remove build/test artifacts — restore a fresh-clone tree (keeps code changes)
+    cmds:
+      - git clean -dfX
+      - go -C src clean -testcache
+
+  clean:dry:
+    desc: Show what `task clean` would remove, without deleting anything
+    cmds:
+      - git clean -dnX
+
+  test:unit:
+    desc: Run unit tests
+    dir: src
+    cmds:
+      - go test -count=1 ./...
+
+  test:race:
+    desc: Run tests with the race detector
+    dir: src
+    cmds:
+      - go test -race -count=3 ./...
+
+  fmt:
+    desc: Format Go code (gofmt + goimports via golangci-lint)
+    dir: src
+    cmds:
+      - go tool golangci-lint fmt
+
+  vet:
+    desc: Run go vet
+    dir: src
+    cmds:
+      - go vet ./...
+
+  lint:
+    desc: Run golangci-lint (go tool)
+    dir: src
+    cmds:
+      - go tool golangci-lint run
+
+  modernize:
+    desc: Run the modernize analyzer (go tool)
+    dir: src
+    cmds:
+      - go list ./... | xargs go tool modernize
+
+  fieldalignment:
+    desc: Run the fieldalignment analyzer (go tool)
+    dir: src
+    cmds:
+      - go list ./... | xargs go tool fieldalignment
+
+  tidy:
+    desc: Tidy go.mod / go.sum
+    dir: src
+    cmds:
+      - go mod tidy
+
+  tidy:check:
+    desc: Fail if go.mod / go.sum are not tidy (CI parity — mirrors gomod.yml)
+    dir: src
+    cmds:
+      - go mod tidy
+      - |
+        if ! git diff --exit-code -- go.mod go.sum; then
+          git --no-pager diff -- go.mod go.sum
+          echo "go mod tidy is needed — commit the changes above"
+          exit 1
+        fi
+        echo "go.mod / go.sum are tidy"
+
+  markdown-lint:
+    desc: Lint Markdown files (runs from the repo root)
+    cmds:
+      - npx -y markdownlint-cli2@{{.MDLINT_VERSION}} '**/*.md'
+
+  commit-lint:
+    # Pure npx — nothing is installed in the repo. The catch: commitlint resolves
+    # `extends: @commitlint/config-conventional` from the CURRENT DIRECTORY, not
+    # from where its binary lives, so it can't see the preset npx installed in its
+    # own cache. Fix: npx puts <cache>/node_modules/.bin on PATH for the spawned
+    # command, so inside `sh -c` we derive that node_modules from the resolved
+    # `commitlint` path and hand it to commitlint via NODE_PATH. npx caches by
+    # package set, so repeat runs don't reinstall.
+    # By default lints the most recent commit; override the source, e.g.:
+    #   task commit-lint SOURCE='--from origin/main --to HEAD'
+    #   task commit-lint SOURCE='--edit .git/COMMIT_EDITMSG'
+    desc: Lint commit messages against .commitlintrc.cjs (Conventional Commits)
+    silent: true
+    vars:
+      SOURCE: '{{.SOURCE | default "--last"}}'
+    cmds:
+      - >-
+        npx -y
+        --package @commitlint/cli@{{.COMMITLINT_VERSION}}
+        --package @commitlint/config-conventional@{{.COMMITLINT_VERSION}}
+        --
+        sh -c 'NODE_PATH="$(dirname "$(dirname "$(command -v commitlint)")")"
+        commitlint --config .commitlintrc.cjs {{.SOURCE}} --verbose'
+
+  # Aggregate task: everything CI enforces on Go code. Run this before pushing.
+  test:
+    desc: Run the full check suite — vet, lint, modernize, fieldalignment, unit tests
+    cmds:
+      - task: vet
+      - task: lint
+      - task: modernize
+      - task: fieldalignment
+      - task: test:unit
+
+  # ── Project bootstrap: one-time setup for a repo cloned from this template ────
+  setup:
+    desc: One-time setup for a new project (protect the default branch, enable auto-merge)
+    cmds:
+      - task: setup:branch-protection
+      - task: setup:auto-merge
+
+  setup:branch-protection:
+    # Generic across every project cloned from this template: the repo slug is
+    # read from the checkout's origin remote via `gh`, nothing is hardcoded, and
+    # the rule targets ~DEFAULT_BRANCH so it works whatever the branch is named.
+    # Creates (or updates in place — re-runnable, no duplicates) a "protected"
+    # repository *ruleset*, GitHub's modern replacement for branch protection.
+    # Requires the GitHub CLI authenticated with admin on the repo.
+    #
+    # Policy: a PR is required (no direct pushes), 0 required approvals (a solo
+    # repo has no second reviewer, so you merge your own green PRs and Dependabot
+    # can auto-merge), the four CI checks must pass, plus no force-push and no
+    # branch deletion. Repository admins bypass everything — your force-merge
+    # escape hatch. Not-yet-seen check contexts are accepted as "Expected".
+    desc: 'Create/update the "protected" ruleset on the default branch (PR + CI checks, 0 reviews)'
+    vars:
+      REPO:
+        sh: gh repo view --json nameWithOwner -q .nameWithOwner
+    cmds:
+      - |
+        set -eu
+        repo="{{.REPO}}"; name="protected"
+        id=$(gh api "repos/${repo}/rulesets" --jq ".[] | select(.name==\"${name}\") | .id" 2>/dev/null | head -n1 || true)
+        if [ -n "${id:-}" ]; then method=PUT; url="repos/${repo}/rulesets/${id}"; echo "Updating ruleset ${name} (#${id}) on ${repo}"; else method=POST; url="repos/${repo}/rulesets"; echo "Creating ruleset ${name} on ${repo}"; fi
+        gh api --method "$method" "$url" --input - <<'JSON'
+        {
+          "name": "protected",
+          "target": "branch",
+          "enforcement": "active",
+          "bypass_actors": [
+            {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}
+          ],
+          "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+          "rules": [
+            {"type": "deletion"},
+            {"type": "non_fast_forward"},
+            {"type": "pull_request", "parameters": {
+              "required_approving_review_count": 0,
+              "dismiss_stale_reviews_on_push": false,
+              "require_code_owner_review": false,
+              "require_last_push_approval": false,
+              "required_review_thread_resolution": false,
+              "allowed_merge_methods": ["squash", "rebase", "merge"]
+            }},
+            {"type": "required_status_checks", "parameters": {
+              "strict_required_status_checks_policy": false,
+              "do_not_enforce_on_create": false,
+              "required_status_checks": [
+                {"context": "code-checks"},
+                {"context": "commit check"},
+                {"context": "go-mod"},
+                {"context": "markdown check"}
+              ]
+            }}
+          ]
+        }
+        JSON
+
+  setup:auto-merge:
+    # Enables the repo-level "Allow auto-merge" setting so dependabot_automerge.yml
+    # can turn on native auto-merge for Dependabot PRs. Idempotent. Generic: repo
+    # slug from the origin remote. Needs the GitHub CLI authenticated with admin.
+    desc: Enable "Allow auto-merge" on the repo (lets Dependabot PRs merge on green)
+    vars:
+      REPO:
+        sh: gh repo view --json nameWithOwner -q .nameWithOwner
+    cmds:
+      - |
+        echo "Enabling auto-merge on {{.REPO}}"
+        gh api --method PATCH "repos/{{.REPO}}" -F allow_auto_merge=true --silent

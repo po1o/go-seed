@@ -1,0 +1,36 @@
+name: Dependabot Auto-Merge
+
+# Turns on GitHub's native auto-merge for Dependabot PRs, so a bump merges itself
+# once the required checks are green. The "protected" ruleset requires 0 reviews
+# (see `task setup:branch-protection`), so nothing waits on a human approval.
+#
+# Requires the repo setting "Allow auto-merge" to be ON — `task setup` enables it
+# (gh api PATCH … allow_auto_merge=true). Without it, `gh pr merge --auto` errors.
+#
+# Security: this job runs no dependency code — only `gh pr merge` against the API.
+# The elevated token never sits beside untrusted code (that is why tidy/build live
+# in their own jobs). It also runs ONLY for Dependabot's own PRs, so fork PRs from
+# other authors are skipped and never reach the write-scoped token.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    # Gate on the PR author, not github.actor (which flips to a human on re-runs).
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      # Auto-merges every Dependabot PR. To limit to non-major bumps instead, add
+      # a `dependabot/fetch-metadata` step and guard on
+      # steps.meta.outputs.update-type != 'version-update:semver-major'.
+      - name: Enable auto-merge for Dependabot PRs
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

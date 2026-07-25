@@ -1,0 +1,138 @@
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+name: CI
+jobs:
+  # Detect whether anything beyond docs changed. The heavy jobs below are gated
+  # on this with a job-level `if` rather than a workflow-level `paths-ignore`:
+  # a docs-only PR then *skips* them, which GitHub reports as passing. A
+  # workflow skipped by paths-ignore would instead never post its context and
+  # leave a required check Pending forever, permanently blocking the PR.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Checkout code 👋
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Detect code changes
+        id: filter
+        shell: bash
+        run: |
+          set -uo pipefail
+          base='${{ github.event.pull_request.base.sha }}'
+          # Fail safe: if we cannot resolve the base, assume code changed so the
+          # heavy jobs still run rather than being silently skipped.
+          if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "base sha $base not in history; assuming code changed" >&2
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only "$base" HEAD)
+          echo "changed files:"; printf '%s\n' "$files"
+          # Docs-only paths that must NOT trigger the heavy jobs: any Markdown file
+          # anywhere, plus COPYING and the funding config.
+          docs='(\.md$|^COPYING$|^\.github/FUNDING\.yml$)'
+          if [ -z "$files" ]; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          elif printf '%s\n' "$files" | grep -qvE "$docs"; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            shell: bash
+          - os: macos-latest
+            shell: zsh
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        # Shell per OS. `bash` is a GitHub keyword that auto-expands to a
+        # hardened `bash --noprofile --norc -eo pipefail {0}`. `zsh` is NOT a
+        # keyword, so we map it to the equivalent hardened template here — this
+        # is the ONE place the zsh command lives, so the matrix can just say
+        # `shell: zsh`. Any other value is passed through as-is.
+        # (The explicit job `name:` above keeps the shell out of the run label.)
+        shell: ${{ matrix.shell == 'zsh' && '/bin/zsh --no-rcs -eo pipefail {0}' || matrix.shell }}
+        working-directory: ${{ github.workspace }}/src
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Go 🗳
+        uses: ./.github/workflows/composite/bootstrap-go
+      # Everything runs through go-task; the tool versions (golangci-lint,
+      # modernize, fieldalignment, task itself) are pinned via the `tool`
+      # directive in src/go.mod, so CI and local devs run identical binaries.
+      - name: Test (vet, lint, modernize, fieldalignment, unit tests)
+        run: go tool task test
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}/src
+    steps:
+      - name: Checkout code 👋
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Go 🗳
+        uses: ./.github/workflows/composite/bootstrap-go
+      - name: Build 🔨
+        run: go tool task build
+      - name: Archive build artifacts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: go-seed
+          retention-days: 1
+          path: |
+            bin
+
+  # Single required status check. Collapses the test matrix legs and build
+  # into one stable, matrix-proof context: adding an OS never changes what
+  # branch protection must require. Always runs (even when the heavy jobs are
+  # skipped on a docs-only PR) so the required context always posts. A skipped
+  # dependency counts as ok; only a real failure blocks.
+  code-checks:
+    needs: [changes, test, build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize required checks
+        shell: bash
+        run: |
+          set -u
+          fail=0
+          # Change detection must have succeeded; otherwise the heavy jobs were
+          # skipped for the wrong reason and we must not report green.
+          if [ '${{ needs.changes.result }}' != 'success' ]; then
+            echo "changes: ${{ needs.changes.result }} — failing"
+            fail=1
+          fi
+          for job in test build; do
+            case "$job" in
+              test)  r='${{ needs.test.result }}' ;;
+              build) r='${{ needs.build.result }}' ;;
+            esac
+            # success = ran & passed; skipped = docs-only PR (job.if was false).
+            case "$r" in
+              success|skipped) echo "$job: $r — ok" ;;
+              *) echo "$job: $r — failing"; fail=1 ;;
+            esac
+          done
+          exit "$fail"

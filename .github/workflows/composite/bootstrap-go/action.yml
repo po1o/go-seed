@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-action.json
+name: "Setup Go"
+description: "Install the Go toolchain pinned for go-seed and prime the module cache"
+branding:
+  icon: download
+  color: purple
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version: "1.26.0"
+        cache-dependency-path: src/go.sum
