@@ -36,7 +36,7 @@ Each workflow installs pinned Go via `bootstrap-go`, then runs a task — no log
 | --- | --- | --- |
 | `ci.yml` | `changes` → `test` (Linux/macOS) ∥ `build` → aggregator | **`code-checks`** |
 | `gomod.yml` | `task tidy:check` | `go-mod` |
-| `commits.yml` | commitlint | `commit check` |
+| `commits.yml` | commitlint — commit messages + PR title | `commit check` |
 | `markdown.yml` | markdownlint-cli2 | `markdown check` |
 | `dependabot_tidy.yml` / `dependabot_automerge.yml` | Dependabot fixups | — |
 
@@ -51,7 +51,8 @@ still reports success — whereas a `paths-ignore`'d required workflow would han
 - **branch-protection** — a `protected` ruleset: PR required, **1 approving review**, the 4 checks, squash/rebase
   only, no force-push/delete. Bypassed by **admins** and the **auto-merge App** — so only Dependabot merges
   review-free. Needs the App's numeric ID in the repo variable `TIDY_APP_ID`.
-- **merge-settings** — auto-merge on, merge commits off, delete head branch on merge.
+- **merge-settings** — auto-merge on, merge commits off, delete head branch on merge, squash commit = PR title +
+  commit details.
 
 Separate (1Password, not in the umbrella so `setup` stays op-free):
 

@@ -24,7 +24,21 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Rebase merges keep individual commits, so each must be conventional.
       - name: Validate commit messages
         uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed
         with:
           configFile: .commitlintrc.cjs
+
+      # Squash merges use the PR title as the commit subject, so it must be
+      # conventional too. Lint it with the SAME .commitlintrc.cjs via pure npx
+      # (NODE_PATH so commitlint resolves the extended preset — see the
+      # commit-lint task). PR_TITLE via env, not ${{…}} inline, to avoid injection.
+      - name: Validate PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          printf '%s\n' "$PR_TITLE" | npx -y \
+            --package @commitlint/cli@19 \
+            --package @commitlint/config-conventional@19 \
+            -- sh -c 'NODE_PATH="$(dirname "$(dirname "$(command -v commitlint)")")" commitlint --config .commitlintrc.cjs --verbose'
