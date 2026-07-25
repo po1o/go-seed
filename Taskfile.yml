@@ -207,10 +207,10 @@ tasks:
 
   # ── Project bootstrap: one-time setup for a repo cloned from this template ────
   setup:
-    desc: One-time setup for a new project (protect the default branch, enable auto-merge)
+    desc: One-time setup for a new project (protect the default branch, set merge settings)
     cmds:
       - task: setup:branch-protection
-      - task: setup:auto-merge
+      - task: setup:merge-settings
 
   setup:branch-protection:
     # Generic across every project cloned from this template: the repo slug is
@@ -261,7 +261,7 @@ tasks:
               "require_code_owner_review": false,
               "require_last_push_approval": false,
               "required_review_thread_resolution": false,
-              "allowed_merge_methods": ["squash", "rebase", "merge"]
+              "allowed_merge_methods": ["squash", "rebase"]
             }},
             {"type": "required_status_checks", "parameters": {
               "strict_required_status_checks_policy": false,
@@ -277,15 +277,21 @@ tasks:
         }
         JSON
 
-  setup:auto-merge:
-    # Enables the repo-level "Allow auto-merge" setting so dependabot_automerge.yml
-    # can turn on native auto-merge for Dependabot PRs. Idempotent. Generic: repo
-    # slug from the origin remote. Needs the GitHub CLI authenticated with admin.
-    desc: Enable "Allow auto-merge" on the repo (lets Dependabot PRs merge on green)
+  setup:merge-settings:
+    # Configures the repo-level PR/merge settings: enables "Allow auto-merge" (so
+    # dependabot_automerge.yml can arm native auto-merge) and disables "Allow
+    # merge commits" (squash/rebase only — keeps history linear; the ruleset
+    # enforces the same on the default branch). Squash and rebase stay enabled by
+    # default. Idempotent. Generic: repo slug from the origin remote. Needs the
+    # GitHub CLI authenticated with admin.
+    desc: Repo merge settings — enable auto-merge, disallow merge commits
     vars:
       REPO:
         sh: gh repo view --json nameWithOwner -q .nameWithOwner
     cmds:
       - |
-        echo "Enabling auto-merge on {{.REPO}}"
-        gh api --method PATCH "repos/{{.REPO}}" -F allow_auto_merge=true --silent
+        echo "Setting merge config on {{.REPO}}: auto-merge on, merge commits off"
+        gh api --method PATCH "repos/{{.REPO}}" \
+          -F allow_auto_merge=true \
+          -F allow_merge_commit=false \
+          --silent

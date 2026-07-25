@@ -120,7 +120,7 @@ Each sub-task also runs alone (`task lint`, `task test:unit`).
 | `test`           | vet → lint → modernize → fieldalignment → test:unit | The pre-push / CI gate              |
 | `setup`          | one-time project bootstrap                      | Runs the two `setup:*` tasks            |
 | `setup:branch-protection` | `gh api …/rulesets` (create/update)    | "protected" ruleset; repo auto-detected |
-| `setup:auto-merge` | `gh api PATCH … allow_auto_merge=true`        | Enables "Allow auto-merge" on the repo  |
+| `setup:merge-settings` | `gh api PATCH … allow_auto_merge/allow_merge_commit` | Auto-merge on, merge commits off  |
 
 ### Node-backed tasks: `markdown-lint` and `commit-lint`
 
@@ -236,6 +236,8 @@ The policy:
   admin-overriding every merge. Instead you merge your own green PRs, and Dependabot can auto-merge. You still
   review by eye; the CI checks are the real gate.
 - **The four checks must pass**, plus **no force-push** and **no branch deletion**.
+- **Squash or rebase merges only** — no merge commits, so history stays linear (`task setup:merge-settings` also
+  turns off the repo's "Allow merge commits" so the button never appears).
 - **Repository admins bypass everything** (`bypass_actors`) — your force-merge escape hatch, cleaner than legacy
   protection's all-or-nothing `enforce_admins`.
 
@@ -301,8 +303,8 @@ because enabling auto-merge isn't a push. It runs only for `dependabot[bot]`'s o
 
 Two prerequisites, both handled by `task setup`:
 
-1. **"Allow auto-merge" must be on** for the repo — `task setup:auto-merge` (`gh api PATCH … allow_auto_merge=true`).
-   Without it `gh pr merge --auto` errors.
+1. **"Allow auto-merge" must be on** for the repo — `task setup:merge-settings` (`gh api PATCH …
+   allow_auto_merge=true`, which also disables merge commits). Without it `gh pr merge --auto` errors.
 2. **No required review** — the `protected` ruleset already sets `required_approving_review_count: 0`.
 
 The pieces compose: Dependabot opens a PR → `dependabot_tidy.yml` fixes `go.mod` if needed (its App-token push
