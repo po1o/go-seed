@@ -15,8 +15,8 @@ full lint suite — locally and in CI, byte-for-byte identical.
 ├── src/                    # all Go sources live here
 │   ├── go.mod              # module + pinned `tool` directives
 │   ├── main.go
-│   └── build/              # build-time metadata (version)
-├── .golangci.yml           # golangci-lint config (in src/)
+│   ├── build/              # build-time metadata (version)
+│   └── .golangci.yml       # golangci-lint config
 └── .github/workflows/      # CI mirrors the local tasks
 ```
 
@@ -64,8 +64,31 @@ drop the `go tool` prefix: `task test`.
 | `markdown-lint`       | Lint Markdown with markdownlint-cli2                    |
 | `commit-lint`         | Lint commit messages (Conventional Commits)            |
 | **`test`**            | **vet + lint + modernize + fieldalignment + unit tests** |
+| `setup` (+ `setup:*`) | One-time repo bootstrap — branch protection, merge settings, creds |
 
 Run `task test` before pushing — it is exactly what CI enforces.
+
+## Workflows
+
+CI lives in `.github/workflows/` and runs the same tasks you do locally.
+
+| Workflow | What it does |
+| --------- | ------------ |
+| `ci.yml` | Lint, tests (Linux/macOS matrix), and build — collapsed behind one required `post-check`; the heavy jobs skip on docs-only PRs. |
+| `gomod.yml` | Fails the PR if `go.mod` / `go.sum` isn't tidy. |
+| `commits.yml` | Lints every commit message **and** the PR title as Conventional Commits. |
+| `markdown.yml` | Runs markdownlint-cli2 across all `*.md`. |
+| `dependabot_tidy.yml` | Runs `go mod tidy` on Dependabot Go PRs and pushes the fix (via a GitHub App token). |
+| `dependabot_automerge.yml` | Auto-merges green Dependabot patch/minor bumps — majors wait for review. |
+| `composite/bootstrap-go/` | Reusable step: install the pinned Go toolchain (used by the others). |
+
+## First-time setup
+
+For a freshly created repo, `task setup` applies a branch-protection ruleset and
+the merge settings (needs the GitHub CLI with admin); `task setup:app-credentials`
+pushes the Dependabot App credentials from 1Password. The full picture — required
+checks, the 1-review-with-App-bypass model, and the credential flow — is in
+[TOOLCHAIN.md](./TOOLCHAIN.md).
 
 ## Cross-compiling
 
