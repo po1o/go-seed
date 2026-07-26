@@ -56,7 +56,7 @@ aggregator still reports success — whereas a `paths-ignore`'d required workflo
 
 Separate (1Password, not in the umbrella so `setup` stays op-free):
 
-- **`setup:app-credentials`** — streams the App's `TIDY_APP_CLIENT_ID` / `_PRIVATE_KEY` (Dependabot secrets) and
+- **`setup:app-credentials`** — streams the App's `TIDY_APP_CLIENT_ID` / `TIDY_APP_PRIVATE_KEY` (Dependabot secrets) and
   `TIDY_APP_ID` (variable) from `op` into `gh` over a pipe — never on disk, in args, or in the environment. Export
   `OP_CLIENT_ID_REF` / `OP_PRIVATE_KEY_REF` / `OP_APP_ID_REF` first.
 
