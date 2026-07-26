@@ -85,10 +85,11 @@ CI lives in `.github/workflows/` and runs the same tasks you do locally.
 ## First-time setup
 
 For a freshly created repo, `task setup` applies a branch-protection ruleset and
-the merge settings (needs the GitHub CLI with admin); `task setup:app-credentials`
-pushes the Dependabot App credentials from 1Password. The full picture — required
-checks, the 1-review-with-App-bypass model, and the credential flow — is in
-[TOOLCHAIN.md](./TOOLCHAIN.md).
+the merge settings (needs the GitHub CLI with admin). `task setup:app-credentials`
+then pushes, from 1Password, the credentials for the **GitHub App that fixes and
+auto-merges Dependabot PRs** — a GitHub App you create (not Dependabot itself).
+The full picture — required checks, the 1-review-with-App-bypass model, and the
+credential flow — is in [TOOLCHAIN.md](./TOOLCHAIN.md).
 
 ## Cross-compiling
 
