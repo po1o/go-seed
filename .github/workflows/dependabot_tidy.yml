@@ -14,7 +14,8 @@ name: Dependabot Auto-Tidy
 # and nothing sensitive sits at rest in the secret store:
 #
 #   1. Create a GitHub App (Settings → Developer settings → GitHub Apps → New):
-#      - Repository permissions → Contents: Read and write (nothing else).
+#      - Repository permissions → Contents: Read and write (to push the tidy fix)
+#        + Pull requests: Read and write (for dependabot_automerge.yml).
 #      - Uncheck "Active" under Webhook (none needed).
 #      - Note the Client ID (the App's page → "Client ID", format Iv23li…);
 #        then "Generate a private key" and download the .pem.

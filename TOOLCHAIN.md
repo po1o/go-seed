@@ -70,6 +70,23 @@ arms auto-merge → checks go green → merges. **Patch/minor auto-merge; majors
 token (not `GITHUB_TOKEN`) because the App key is a Dependabot secret unreadable by human PRs — making the App the
 *only* thing that can skip the review. Full reasoning is in each workflow's header.
 
+## Creating the GitHub App
+
+The Dependabot workflows push commits to, and merge, PRs — things the default `GITHUB_TOKEN` can't do on Dependabot
+PRs. They mint a short-lived token from a **GitHub App you own**. The App named in this repo (`po1o-tidy-bot`) is
+mine; **a third party must create their own** — you can't use mine. Once, reusable across all your repos:
+
+1. **New App** — Settings → Developer settings → GitHub Apps → *New*. Repository permissions:
+   **Contents: Read and write** + **Pull requests: Read and write** (nothing else); uncheck Webhook → Active.
+   Note the **App ID** (a number) and **Client ID** (`Iv23li…`), then generate a **private key** (`.pem`).
+2. **Install** it on each repo (the App's page → Install App).
+3. **Provide the credentials** per repo — via `task setup:app-credentials` (from 1Password) or by hand: two
+   **Dependabot** secrets `TIDY_APP_CLIENT_ID` / `TIDY_APP_PRIVATE_KEY`, and one repo **Actions variable**
+   `TIDY_APP_ID` (the numeric App ID, used by the ruleset bypass).
+
+The two are **Dependabot** secrets (not Actions) on purpose: only Dependabot-triggered runs can read them, so a
+human PR can never mint the token — which is exactly what keeps the review-bypass Dependabot-only.
+
 ## Typical change
 
 ```bash
